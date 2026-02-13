@@ -1,19 +1,135 @@
 <script lang="ts">
   import { afterUpdate, tick } from 'svelte';
+  import hljs from 'highlight.js'; // Import highlight.js
+  // Import a more distinct theme
+  import 'highlight.js/styles/github.css'; 
 
-  let lines = [
+  // Import and register specific languages for highlighting
+  import javascript from 'highlight.js/lib/languages/javascript';
+  import python from 'highlight.js/lib/languages/python';
+  import xml from 'highlight.js/lib/languages/xml'; // For HTML, XML
+  import css from 'highlight.js/lib/languages/css';
+  import typescript from 'highlight.js/lib/languages/typescript';
+  import bash from 'highlight.js/lib/languages/bash';
+
+  hljs.registerLanguage('javascript', javascript);
+  hljs.registerLanguage('python', python);
+  hljs.registerLanguage('html', xml); // 'xml' is often used for HTML
+  hljs.registerLanguage('css', css);
+  hljs.registerLanguage('xml', xml); // Registering xml as xml too
+  hljs.registerLanguage('ts', typescript); // For TypeScript
+  hljs.registerLanguage('typescript', typescript);
+  hljs.registerLanguage('bash', bash);
+  hljs.registerLanguage('sh', bash);
+
+  // Define line types for better structure
+  interface Line {
+    id: number;
+    text: string;
+    renderedHtml: string;
+  }
+
+  function isCodeBlockFence(text: string): boolean {
+    return text.trim().startsWith('```');
+  }
+
+  function getCodeBlockLanguage(text: string): string | null {
+    const match = text.trim().match(/^```(\w*)/);
+    return match ? match[1] || 'plaintext' : null;
+  }
+
+  function renderMarkdown(text: string): string {
+    // console.log('renderMarkdown received text:', text); // DEBUG LOG
+    // For empty or whitespace-only lines, render a non-breaking space
+    // to ensure the div has a stable, measurable height.
+    if (text.trim() === '') {
+      return '&nbsp;';
+    }
+
+    // Helper to sanitize captured content
+    const sanitizeContent = (content: string) => content
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+    const isCodeBlock = text.startsWith('```');
+    if (isCodeBlock) {
+      const codeBlockMatch = text.match(/^```(\w*)\n([\s\S]*?)\n```$/);
+      let code = '';
+      let language = 'plaintext'; 
+
+      if (codeBlockMatch) {
+        language = codeBlockMatch[1] || 'plaintext';
+        code = codeBlockMatch[2];
+      } else {
+        // If the code block is malformed, treat the whole text as code
+        code = text.substring(text.indexOf('```') + 3); // Remove leading ```
+      }
+      
+      let highlightedCode = code;
+      try {
+        highlightedCode = hljs.highlight(code, {language: language}).value;
+      } catch (e) {
+        highlightedCode = hljs.highlight(code, {language: 'plaintext'}).value;
+      }
+      return `<pre><code class="language-${language}">${highlightedCode}</code></pre>`;
+    }
+
+
+    let markdownApplied = false;
+    let resultHtml = text; 
+
+    // Headings
+    resultHtml = resultHtml.replace(/^(#+)\s(.+)/, (fullMatch, hashes, content) => {
+        markdownApplied = true;
+        const level = hashes.length;
+        return `<h${level}>${sanitizeContent(content)}</h${level}>`;
+    });
+
+    // Inline formatting
+    resultHtml = resultHtml.replace(/\*\*(.*?)\*\*/g, (_, content) => {
+        markdownApplied = true;
+        return `<strong>${sanitizeContent(content)}</strong>`;
+    });
+    resultHtml = resultHtml.replace(/\*(.*?)\*/g, (_, content) => {
+        markdownApplied = true;
+        return `<em>${sanitizeContent(content)}</em>`;
+    });
+    resultHtml = resultHtml.replace(/`(.*?)`/g, (_, content) => {
+        markdownApplied = true;
+        return `<code>${sanitizeContent(content)}`;
+    });
+
+    if (!markdownApplied) {
+        return `<p>${sanitizeContent(text)}</p>`;
+    }
+
+    return resultHtml;
+  }
+
+  let initialLines: Omit<Line, 'renderedHtml'>[] = [
     { id: 1, text: "# Large Heading" },
     { id: 2, text: "This is a normal paragraph." },
-    { id: 3, text: "" }, // Empty line between a heading and a paragraph
+    { id: 3, text: "" }, 
     { id: 4, text: "Another paragraph." },
-    { id: 5, text: "    " }, // Line with only spaces
-    { id: 6, text: "" }, // Another empty line
-    { id: 7, text: "" }, // A third empty line
+    { id: 5, text: "    " }, 
+    { id: 6, text: "" }, 
+    { id: 7, text: "" }, 
     { id: 8, text: "## Smaller Heading" },
     { id: 9, text: "A very long line of text that will definitely wrap to the next line, which should give it a significant height. Let's see how the editor handles the measurement of a line like this when we navigate to or from it. This is a crucial test case." },
-    { id: 10, text: "" }, // Empty line after a tall, wrapped line
-    { id: 11, text: "Final line." },
+    { id: 10, text: "" }, 
+    { id: 11, text: "```javascript\nfunction greet(name) {\n  console.log('Hello, ' + name);\n}\ngreet('World');\n```" },
+    { id: 12, text: "" },
+    { id: 13, text: "Final line." },
   ];
+
+  let lines: Line[] = initialLines.map(line => ({
+      ...line,
+      renderedHtml: renderMarkdown(line.text)
+  }));
+
   let nextId = lines.length > 0 ? Math.max(...lines.map(l => l.id)) + 1 : 1;
 
   let debugMode = false;
@@ -23,9 +139,8 @@
   }
 
   let textareaRefs: HTMLTextAreaElement[] = [];
-  let previewRefs: HTMLDivElement[] = []; // Preview elements references
-  
-  // Store calculated font styles for each preview div
+  let previewRefs: HTMLDivElement[] = []; 
+
   let allPreviewFontStyles: { fontSize: string | null; fontWeight: string | null }[] = [];
 
   let pendingFocusIndex: number | null = null;
@@ -36,21 +151,19 @@
     if (!textarea) return;
 
     if (textarea.value.trim() === '') {
-      textarea.style.height = '35px'; // Pragmatic adjustment to target 40px computed height
+      textarea.style.height = '30px'; 
       return;
     }
 
     textarea.style.height = '1px';
-    textarea.style.height = `${textarea.scrollHeight - 5}px`; // Apply -5px adjustment
+    textarea.style.height = `${textarea.scrollHeight - 5}px`; 
   }
 
 
-
-  // 指定されたプレビュー要素の最初のブロック要素のfont-sizeとfont-weightを取得
   function getRenderedFontStyles(index: number): { fontSize: string | null; fontWeight: string | null } {
     if (previewRefs[index]) {
       const previewElement = previewRefs[index];
-      const childElements = previewElement.querySelectorAll('h1, h2, p, strong, em, code');
+      const childElements = previewElement.querySelectorAll('h1, h2, p, strong, em, code, pre'); 
       const targetElement = childElements.length > 0 ? childElements[0] : previewElement;
       const computedStyle = window.getComputedStyle(targetElement);
       return {
@@ -66,7 +179,7 @@
     if (targetIndex < 0 || targetIndex >= lines.length) {
         return;
     }
-    editingLineIndex = targetIndex; // Set editingLineIndex directly to trigger CSS class change
+    editingLineIndex = targetIndex; 
     pendingFocusIndex = targetIndex;
     pendingFocusPos = targetCursorPos;
   }
@@ -79,184 +192,129 @@
     editingLineIndex = null;
   }
 
-    function handleKeyDown(event: KeyboardEvent, index: number) {
+  function handleKeyDown(event: KeyboardEvent, index: number) {
+    const textarea = event.target as HTMLTextAreaElement;
+    const { selectionStart, selectionEnd, value } = textarea;
 
-      const textarea = event.target as HTMLTextAreaElement;
+    const isCurrentLineCodeBlock = isCodeBlockFence(lines[index].text);
 
-      const { selectionStart, selectionEnd, value } = textarea;
+    if (event.key === 'Enter') {
+      if (isCurrentLineCodeBlock) {
+        // Allow native textarea Enter behavior for code blocks (multi-line input)
+        // The on:input handler for code blocks will handle content updates, including adding closing ```
+        return; 
+      }
+      // For regular lines: split the line
+      event.preventDefault();
 
-  
+      const currentLine = lines[index];
+      const textBeforeCursor = value.substring(0, selectionStart);
+      const textAfterCursor = value.substring(selectionEnd);
 
-      if (event.key === 'Enter') {
+      currentLine.text = textBeforeCursor;
+      currentLine.renderedHtml = renderMarkdown(currentLine.text);
 
-        event.preventDefault();
+      const newLine: Line = { 
+        id: nextId++, 
+        text: textAfterCursor, 
+        renderedHtml: renderMarkdown(textAfterCursor)
+      };
 
-  
+      lines = [...lines.slice(0, index + 1), newLine, ...lines.slice(index + 1)];
 
-        const currentLine = lines[index];
+      activateLineForEditing(index + 1, 0);
 
-        const textBeforeCursor = value.substring(0, selectionStart);
-
-        const textAfterCursor = value.substring(selectionEnd);
-
-  
-
-        currentLine.text = textBeforeCursor;
-
-  
-
-        const newLine = { id: nextId++, text: textAfterCursor };
-
-        lines = [...lines.slice(0, index + 1), newLine, ...lines.slice(index + 1)];
-
-  
-
-        activateLineForEditing(index + 1, 0);
-
-  
-
-      } else if (event.key === 'Backspace') {
-
-        if (selectionStart === 0 && selectionEnd === 0 && index > 0) {
-
-          event.preventDefault();
-
-  
-
-          const previousLine = lines[index - 1];
-
-          const currentLine = lines[index];
-
-          const combinedText = previousLine.text + currentLine.text;
-
-          previousLine.text = combinedText;
-
-  
-
-          lines = lines.filter((_, i) => i !== index);
-
-  
-
-          activateLineForEditing(index - 1, previousLine.text.length);
-
+    } else if (event.key === 'Backspace') {
+      // If cursor is at the very beginning of a line
+      if (selectionStart === 0 && selectionEnd === 0 && index > 0) {
+        // If current line is a code block, allow native backspace (don't merge)
+        if (isCurrentLineCodeBlock) {
+            return;
         }
 
-      } else if (event.key === 'ArrowUp') {
-
-        event.preventDefault();
-
-        if (index > 0) {
-
-          activateLineForEditing(index - 1, selectionStart);
-
+        const previousLine = lines[index - 1];
+        const isPreviousLineCodeBlock = isCodeBlockFence(previousLine.text);
+        
+        // Prevent merging if the previous line is a code block
+        if (isPreviousLineCodeBlock) {
+            return;
         }
 
-      } else if (event.key === 'ArrowDown') {
-
-        event.preventDefault();
-
-        if (index < lines.length - 1) {
-
-          activateLineForEditing(index + 1, selectionStart);
-
-        }
-
+        // For regular lines: merge with previous line
+        event.preventDefault(); 
+        const combinedText = previousLine.text + value; // value is current line's text
+        previousLine.text = combinedText;
+        previousLine.renderedHtml = renderMarkdown(combinedText);
+        lines = lines.filter((_, i) => i !== index);
+        activateLineForEditing(index - 1, previousLine.text.length);
+      }
+    } else if (event.key === 'ArrowUp') {
+      let shouldMoveUp = false;
+      
+      if (isCurrentLineCodeBlock) {
+          // For code blocks: move up only if cursor is at selectionStart === 0
+          shouldMoveUp = (selectionStart === 0);
+      } else {
+          // For regular lines: move up only if cursor is at selectionStart === 0
+          shouldMoveUp = (selectionStart === 0);
       }
 
+      if (shouldMoveUp && index > 0) { 
+        event.preventDefault(); 
+        activateLineForEditing(index - 1, 0);
+      }
+    } else if (event.key === 'ArrowDown') {
+      let shouldMoveDown = false;
+      
+      if (isCurrentLineCodeBlock) {
+          // For code blocks: move down if cursor is on the last visual line
+          const lastNewlineIndex = value.lastIndexOf('\n');
+          shouldMoveDown = (selectionStart >= lastNewlineIndex + 1 || (lastNewlineIndex === -1 && selectionStart === value.length)); // If no newline, cursor must be at end
+      } else {
+          // For regular lines: move down only if cursor is at the very end of the textarea
+          shouldMoveDown = (selectionStart === value.length);
+      }
+
+      if (shouldMoveDown && index < lines.length - 1) { 
+        event.preventDefault(); 
+        activateLineForEditing(index + 1, 0);
+      }
     }
-
-  function renderMarkdown(text: string): string {
-    // For empty or whitespace-only lines, render a non-breaking space
-    // to ensure the div has a stable, measurable height.
-    if (text.trim() === '') {
-      return '&nbsp;';
-    }
-
-    // Helper to sanitize captured content
-    const sanitizeContent = (content: string) => content
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
-
-    let processedHtml = text;
-    let markdownApplied = false;
-
-    // Headings
-    processedHtml = processedHtml.replace(/^#\s(.+)/, (fullMatch) => {
-        markdownApplied = true;
-        return `<h1>${sanitizeContent(fullMatch)}</h1>`;
-    });
-    processedHtml = processedHtml.replace(/^##\s(.+)/, (fullMatch) => {
-        markdownApplied = true;
-        return `<h2>${sanitizeContent(fullMatch)}</h2>`;
-    });
-
-    // Inline formatting
-    processedHtml = processedHtml.replace(/\*\*(.*?)\*\*/g, (_, content) => {
-        markdownApplied = true;
-        return `<strong>${sanitizeContent(content)}</strong>`;
-    });
-    processedHtml = processedHtml.replace(/\*(.*?)\*/g, (_, content) => {
-        markdownApplied = true;
-        return `<em>${sanitizeContent(content)}</em>`;
-    });
-    processedHtml = processedHtml.replace(/`(.*?)`/g, (_, content) => {
-        markdownApplied = true;
-        return `<code>${sanitizeContent(content)}</code>`;
-    });
-
-    // If no markdown was applied, sanitize the entire text and wrap it in a paragraph tag
-    if (!markdownApplied) {
-        return `<p>${sanitizeContent(text)}</p>`;
-    }
-
-    return processedHtml;
   }
 
-
   afterUpdate(async () => {
-    // Phase 1: Update preview font styles
-    // This loop runs after every DOM update, ensuring these arrays are always current
     previewRefs.forEach((preview, idx) => {
-        if (preview) { // Ensure preview element exists
-            // Capture font styles.
+        if (preview) { 
             const currentFontStyles = getRenderedFontStyles(idx);
-            // Check if font styles have changed to avoid unnecessary reactivity
             if (
                 allPreviewFontStyles[idx]?.fontSize !== currentFontStyles.fontSize ||
                 allPreviewFontStyles[idx]?.fontWeight !== currentFontStyles.fontWeight
             ) {
                 allPreviewFontStyles[idx] = currentFontStyles;
-                allPreviewFontStyles = [...allPreviewFontStyles]; // Trigger Svelte reactivity
+                allPreviewFontStyles = [...allPreviewFontStyles]; 
             }
         }
     });
 
-    // Phase 2: Handle pending focus changes
     if (pendingFocusIndex !== null && pendingFocusIndex >= 0 && pendingFocusIndex < lines.length) {
       if (editingLineIndex !== pendingFocusIndex) {
         editingLineIndex = pendingFocusIndex;
-        await tick(); // Wait for DOM to update with new editingLineIndex
+        await tick(); 
       }
 
       const targetTextarea = textareaRefs[pendingFocusIndex];
       if (targetTextarea) {
-        // 1. Apply font styles first, so scrollHeight can be calculated correctly.
         const stylesToApply = allPreviewFontStyles[pendingFocusIndex];
         if (stylesToApply) {
             targetTextarea.style.fontSize = stylesToApply.fontSize || '';
             targetTextarea.style.fontWeight = stylesToApply.fontWeight || '';
         } else {
-            targetTextarea.style.fontSize = ''; // Reset to default
-            targetTextarea.style.fontWeight = ''; // Reset to default
+            targetTextarea.style.fontSize = ''; 
+            targetTextarea.style.fontWeight = ''; 
         }
 
-        // 2. Now, calculate height with the correct font styles applied.
         autoGrow(targetTextarea);
         
-        // 3. Finally, focus the textarea.
         targetTextarea.focus();
         if (pendingFocusPos !== null) {
             const adjustedPos = Math.min(pendingFocusPos, targetTextarea.value.length);
@@ -273,24 +331,76 @@
 <main>
   <div class="editor">
     {#each lines as line, index (line.id)}
-      <div class="line" class:editing={editingLineIndex === index || debugMode}>
-        <textarea
-          bind:this={textareaRefs[index]}
-          bind:value={line.text}
-          on:keydown={(e) => handleKeyDown(e, index)}
-          on:input={(e) => autoGrow(e.target as HTMLTextAreaElement)}
-          on:focus={() => handleFocus(index)}
-          on:blur={handleBlur}
-        ></textarea>
-        <div
-          class="markdown-preview"
-          bind:this={previewRefs[index]}
-          on:click={() => {
-            activateLineForEditing(index, 0);
-          }}
-        >
-          {@html renderMarkdown(line.text)}
-        </div>
+      {@const isCurrentLineCodeBlock = isCodeBlockFence(line.text)}
+      <div class="line" class:editing={editingLineIndex === index || debugMode} class:code-block={isCurrentLineCodeBlock}>
+        {#if editingLineIndex === index && isCurrentLineCodeBlock}
+          <!-- When editing a code block, show 2-pane -->
+          <div class="code-editor-panes">
+            <textarea
+              bind:this={textareaRefs[index]}
+              value={isCodeBlockFence(line.text) ? line.text.replace(/\n```$/, '') : line.text}
+              on:keydown={(e) => handleKeyDown(e, index)}
+              on:input={(e) => {
+                  const target = e.target as HTMLTextAreaElement;
+                  const currentCursorPos = target.selectionStart;
+                  let editedContent = target.value;
+
+                  if (!isCodeBlockFence(editedContent)) {
+                      lines[index].text = editedContent; 
+                      lines[index].renderedHtml = renderMarkdown(editedContent);
+                  } else {
+                      let lang = getCodeBlockLanguage(editedContent) || '';
+                      lines[index].text = `${editedContent}\n\`\`\``;
+                      lines[index].renderedHtml = renderMarkdown(lines[index].text);
+                  }
+                  autoGrow(target);
+                  lines = lines;
+                  pendingFocusIndex = index;
+                  pendingFocusPos = currentCursorPos;
+              }}
+              on:focus={() => handleFocus(index)}
+              on:blur={handleBlur}
+            ></textarea>
+            <div class="code-preview-pane markdown-preview" bind:this={previewRefs[index]}>
+              {@html line.renderedHtml}
+            </div>
+          </div>
+        {:else if editingLineIndex === index}
+          <!-- When editing a regular line, show single textarea -->
+          <textarea
+            bind:this={textareaRefs[index]}
+            value={line.text}
+            on:keydown={(e) => handleKeyDown(e, index)}
+            on:input={(e) => {
+                const target = e.target as HTMLTextAreaElement;
+                const currentCursorPos = target.selectionStart;
+
+                lines[index].text = target.value;
+                lines[index].renderedHtml = renderMarkdown(lines[index].text);
+                autoGrow(target);
+                lines = lines;
+                pendingFocusIndex = index;
+                pendingFocusPos = currentCursorPos;
+            }}
+            on:focus={() => handleFocus(index)}
+            on:blur={handleBlur}
+          ></textarea>
+        {/if}
+
+        {#if editingLineIndex !== index || !isCurrentLineCodeBlock}
+          <!-- When not editing, or if editing a regular line, show markdown preview -->
+          <div
+            class="markdown-preview"
+            bind:this={previewRefs[index]}
+            on:click={() => {
+              activateLineForEditing(index, 0);
+            }}
+            style={editingLineIndex === index && isCurrentLineCodeBlock ? 'display: none;' : ''}
+          >
+            {@html line.renderedHtml}
+          </div>
+        {/if}
+
       </div>
     {/each}
 
@@ -312,14 +422,14 @@
 
   /* --- Layout --- */
   .line {
-    position: relative; /* Crucial for positioning children */
+    position: relative; 
     margin-bottom: 0.5rem;
     min-height: 18px;
   }
 
   /* --- Default State (Preview is visible) --- */
   .markdown-preview {
-    position: relative; /* In layout flow */
+    position: relative; 
     padding: 0.5rem;
     border: none;
     border-radius: 4px;
@@ -330,7 +440,6 @@
   }
 
   textarea {
-    /* Hidden and out of layout flow */
     position: absolute;
     top: 0;
     left: 0;
@@ -339,7 +448,6 @@
     visibility: hidden;
     pointer-events: none;
 
-    /* Visual styles */
     padding: 0.5rem;
     border: none;
     border-radius: 4px;
@@ -358,24 +466,21 @@
 
   /* --- Editing State --- */
   .line.editing .markdown-preview {
-    /* Hidden and out of layout flow */
     position: absolute;
     visibility: hidden;
     pointer-events: none;
   }
 
   .line.editing textarea {
-    /* Visible and in layout flow */
     position: relative;
     visibility: visible;
     pointer-events: auto;
-    height: auto; /* Let autoGrow function handle the height */
+    height: auto; 
   }
 
   /* --- Other Styles --- */
   textarea:focus {
     outline: none;
-    /* border-color: #007bff; Removed */
   }
 
   .markdown-preview :global(h1),
@@ -414,5 +519,46 @@
     padding: 0.1em 0.3em;
     border-radius: 3px;
     font-family: monospace;
+  }
+  /* --- Code Block Specific Styles --- */
+  .code-block.editing .code-editor-panes {
+    display: flex;
+    gap: 1rem; 
+  }
+
+  .code-editor-panes textarea,
+  .code-editor-panes .code-preview-pane {
+    flex: 1; 
+    position: relative;
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .code-editor-panes textarea {
+    height: auto; 
+  }
+
+  .code-editor-panes .code-preview-pane {
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    overflow: auto; 
+    background-color: #f6f8fa; 
+  }
+
+  .markdown-preview :global(pre) { 
+    background-color: #f6f8fa;
+    border-radius: 6px;
+    padding: 0.75rem;
+    overflow-x: auto;
+    font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    font-size: 0.875em;
+    line-height: 1.4;
+  }
+
+  .markdown-preview :global(pre code) {
+    background-color: transparent; 
+    padding: 0;
+    border-radius: 0;
   }
 </style>
