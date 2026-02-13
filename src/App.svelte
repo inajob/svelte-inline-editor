@@ -11,6 +11,7 @@
   import css from 'highlight.js/lib/languages/css';
   import typescript from 'highlight.js/lib/languages/typescript';
   import bash from 'highlight.js/lib/languages/bash';
+  import mermaid from 'mermaid';
 
   hljs.registerLanguage('javascript', javascript);
   hljs.registerLanguage('python', python);
@@ -21,6 +22,11 @@
   hljs.registerLanguage('typescript', typescript);
   hljs.registerLanguage('bash', bash);
   hljs.registerLanguage('sh', bash);
+
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'default'
+  });
 
   // Define line types for better structure
   interface Line {
@@ -59,23 +65,41 @@
     if (isCodeBlock) {
       const codeBlockMatch = text.match(/^```(\w*)\n([\s\S]*?)\n```$/);
       let code = '';
-      let language = 'plaintext'; 
+      let language = 'plaintext';
 
       if (codeBlockMatch) {
         language = codeBlockMatch[1] || 'plaintext';
         code = codeBlockMatch[2];
       } else {
-        // If the code block is malformed, treat the whole text as code
-        code = text.substring(text.indexOf('```') + 3); // Remove leading ```
+        code = text.substring(text.indexOf('```') + 3);
       }
-      
-      let highlightedCode = code;
-      try {
-        highlightedCode = hljs.highlight(code, {language: language}).value;
-      } catch (e) {
-        highlightedCode = hljs.highlight(code, {language: 'plaintext'}).value;
+
+      if (language === 'mermaid') {
+        try {
+          // Mermaid needs an ID for its container
+          const id = 'mermaid-' + Math.random().toString(36).substring(2, 9);
+          // Render mermaid and get the SVG
+          // mermaid.render returns a promise, but we are in a synchronous function.
+          // For now, we'll return a placeholder and rely on client-side rendering later.
+          // Or, for initial render, we can do a synchronous render if possible, or mark for post-render processing.
+          // For now, let's assume we can directly get the SVG.
+          // This will require mermaid.run() or similar in afterUpdate.
+          // For initial render, we'll just return a div that mermaid can target.
+          return `<div class="mermaid">${code}</div>`;
+
+        } catch (e) {
+          console.error("Mermaid rendering failed:", e);
+          return `<pre><code class="language-plaintext">Error rendering Mermaid:\n${code}</code></pre>`;
+        }
+      } else {
+        let highlightedCode = code;
+        try {
+          highlightedCode = hljs.highlight(code, {language: language}).value;
+        } catch (e) {
+          highlightedCode = hljs.highlight(code, {language: 'plaintext'}).value;
+        }
+        return `<pre><code class="language-${language}">${highlightedCode}</code></pre>`;
       }
-      return `<pre><code class="language-${language}">${highlightedCode}</code></pre>`;
     }
 
 
@@ -327,6 +351,7 @@
         pendingFocusIndex = null;
         pendingFocusPos = null;
       }
+      mermaid.run(); // Initialize and render Mermaid diagrams
     });</script>
 
 <main>
@@ -560,16 +585,5 @@
     background-color: transparent; 
     padding: 0;
     border-radius: 0;
-  }
-
-  /* --- DEBUG STYLES FOR 2-PANE --- */
-  .code-editor-panes textarea {
-    border: 5px solid green !important;
-    background-color: #e0ffe0 !important;
-  }
-
-  .code-editor-panes .code-preview-pane {
-    border: 5px solid purple !important;
-    background-color: #e0e0ff !important;
   }
 </style>
