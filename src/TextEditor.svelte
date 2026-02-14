@@ -38,7 +38,6 @@
     renderedHtml: string;
     computedStyles?: { fontSize: string | null; fontWeight: string | null };
   }
-
   function isCodeBlockFence(text: string): boolean {
     return text.trim().startsWith('```');
   }
@@ -175,7 +174,6 @@ ${code}</code></pre>`;
   });
   
 
-  console.log(initialLines, lines)
   let nextId = lines.length > 0 ? Math.max(...lines.map(l => l.id)) + 1 : 1;
 
   export let debugMode: boolean = false;
@@ -482,7 +480,7 @@ ${code}</code></pre>`;
 
   textarea {
     display: none; /* Changed from position: absolute and visibility: hidden */
-
+    background-color: transparent; /* Added */
     padding: 0;
     border: none;
     border-radius: 4px;
@@ -509,7 +507,11 @@ ${code}</code></pre>`;
         pointer-events: auto;
         height: auto;
         width: 100%; /* Added to ensure full width for editing regular lines */
-      }  /* --- Other Styles --- */
+      }
+  .line.editing {
+    background-color: #f0f0f0; /* Light gray */
+  }
+  /* --- Other Styles --- */
   textarea:focus {
     outline: none;
   }
@@ -559,7 +561,6 @@ ${code}</code></pre>`;
     width: 100%; /* Ensure it takes full width of its parent (.line) */
     min-height: 100px; /* Give it a minimum height to be visible */
     box-sizing: border-box; /* Include padding and border in element's total width and height */
-    border: 1px dashed red; /* DEBUG: To see if the container is rendered */
   }
 
   .code-editor-panes textarea,
@@ -570,7 +571,6 @@ ${code}</code></pre>`;
     visibility: visible; 
     display: block; 
     pointer-events: auto;
-    border: 1px solid blue; 
     position: relative; /* CRITICAL FIX: Override global absolute positioning */
   }
 
