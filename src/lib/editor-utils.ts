@@ -1,7 +1,13 @@
 import hljs from 'highlight.js';
 import mermaid from 'mermaid';
 
-
+// Define line types for better structure
+export type Line = {
+  id: number;
+  text: string;
+  renderedHtml: string;
+  computedStyles?: { fontSize: string | null; fontWeight: string | null };
+};
 
 export function isCodeBlockFence(text: string): boolean {
   return text.trim().startsWith('```');
@@ -138,3 +144,4 @@ export function getComputedStylesFromHtml(htmlContent: string): { fontSize: stri
   document.body.removeChild(tempDiv);
   return styles;
 }
+

@@ -46,8 +46,6 @@
     theme: 'default'
   });
 
-
-
   export let initialLines: Omit<Line, 'renderedHtml'>[] = [
     { id: 1, text: "# Large Heading" },
     { id: 2, text: "This is a normal paragraph." },
@@ -117,64 +115,72 @@
     }
   }
 
-  function handleKeyDown(event: KeyboardEvent, index: number) {
+  function handleEnterKey(event: KeyboardEvent, index: number) {
     const textarea = event.target as HTMLTextAreaElement;
     const { selectionStart, selectionEnd, value } = textarea;
-
     const isCurrentLineCodeBlock = isCodeBlockFence(lines[index].text);
 
-    if (event.key === 'Enter') {
+    if (isCurrentLineCodeBlock) {
+      // Allow native textarea Enter behavior for code blocks
+      return; 
+    }
+    // For regular lines: split the line
+    event.preventDefault();
+
+    const currentLine = lines[index];
+    const textBeforeCursor = value.substring(0, selectionStart);
+    const textAfterCursor = value.substring(selectionEnd);
+
+    currentLine.text = textBeforeCursor;
+    currentLine.renderedHtml = renderMarkdown(currentLine.text);
+
+    const newLine: Line = { 
+      id: nextId++, 
+      text: textAfterCursor, 
+      renderedHtml: renderMarkdown(textAfterCursor)
+    };
+
+    lines = [...lines.slice(0, index + 1), newLine, ...lines.slice(index + 1)];
+
+    activateLineForEditing(index + 1, 0);
+  }
+
+  function handleBackspaceKey(event: KeyboardEvent, index: number) {
+    const textarea = event.target as HTMLTextAreaElement;
+    const { selectionStart, selectionEnd, value } = textarea;
+    const isCurrentLineCodeBlock = isCodeBlockFence(lines[index].text);
+
+    // If cursor is at the very beginning of a line
+    if (selectionStart === 0 && selectionEnd === 0 && index > 0) {
+      // If current line is a code block, allow native backspace (don't merge)
       if (isCurrentLineCodeBlock) {
-        // Allow native textarea Enter behavior for code blocks (multi-line input)
-        // The on:input handler for code blocks will handle content updates, including adding closing ```
-        return; 
+          return;
       }
-      // For regular lines: split the line
-      event.preventDefault();
 
-      const currentLine = lines[index];
-      const textBeforeCursor = value.substring(0, selectionStart);
-      const textAfterCursor = value.substring(selectionEnd);
-
-      currentLine.text = textBeforeCursor;
-      currentLine.renderedHtml = renderMarkdown(currentLine.text);
-
-      const newLine: Line = { 
-        id: nextId++, 
-        text: textAfterCursor, 
-        renderedHtml: renderMarkdown(textAfterCursor)
-      };
-
-      lines = [...lines.slice(0, index + 1), newLine, ...lines.slice(index + 1)];
-
-      activateLineForEditing(index + 1, 0);
-
-    } else if (event.key === 'Backspace') {
-      // If cursor is at the very beginning of a line
-      if (selectionStart === 0 && selectionEnd === 0 && index > 0) {
-        // If current line is a code block, allow native backspace (don't merge)
-        if (isCurrentLineCodeBlock) {
-            return;
-        }
-
-        const previousLine = lines[index - 1];
-        const isPreviousLineCodeBlock = isCodeBlockFence(previousLine.text);
-        
-        // Prevent merging if the previous line is a code block
-        if (isPreviousLineCodeBlock) {
-            return;
-        }
-
-        // For regular lines: merge with previous line
-        event.preventDefault(); 
-        const combinedText = previousLine.text + value; // value is current line's text
-        previousLine.text = combinedText;
-        previousLine.renderedHtml = renderMarkdown(combinedText);
-        lines = lines.filter((_, i) => i !== index);
-        activateLineForEditing(index - 1, previousLine.text.length);
+      const previousLine = lines[index - 1];
+      const isPreviousLineCodeBlock = isCodeBlockFence(previousLine.text);
+      
+      // Prevent merging if the previous line is a code block
+      if (isPreviousLineCodeBlock) {
+          return;
       }
-    } else if (event.key === 'ArrowUp') {
-      if (isCurrentLineCodeBlock) {
+
+      // For regular lines: merge with previous line
+      event.preventDefault(); 
+      const combinedText = previousLine.text + value; // value is current line's text
+      previousLine.text = combinedText;
+      previousLine.renderedHtml = renderMarkdown(combinedText);
+      lines = lines.filter((_, i) => i !== index);
+      activateLineForEditing(index - 1, previousLine.text.length);
+    }
+  }
+
+  function handleArrowUpKey(event: KeyboardEvent, index: number) {
+    const textarea = event.target as HTMLTextAreaElement;
+    const { selectionStart, value } = textarea;
+    const isCurrentLineCodeBlock = isCodeBlockFence(lines[index].text);
+
+    if (isCurrentLineCodeBlock) {
         // For code blocks: move up if cursor is on the first visual line
         const firstNewlineIndex = value.indexOf('\n');
         const shouldMoveUp = (selectionStart <= firstNewlineIndex || firstNewlineIndex === -1);
@@ -182,39 +188,49 @@
         if (shouldMoveUp && index > 0) {
           event.preventDefault();
           activateLineForEditing(index - 1, 0);
-        } else {
-          // Allow default behavior
         }
-      } else {
+    } else {
         // For regular lines: always move up if not the first line
         if (index > 0) {
           event.preventDefault();
           activateLineForEditing(index - 1, 0);
         }
-      }
-    } else if (event.key === 'ArrowDown') {
-      if (isCurrentLineCodeBlock) {
-        // For code blocks: move down if cursor is on the last visual line
-        const lastNewlineIndex = value.lastIndexOf('\n');
-        const shouldMoveDown = (selectionStart >= lastNewlineIndex + 1 || (lastNewlineIndex === -1 && selectionStart === value.length)); // If no newline, cursor must be at end
+    }
+  }
 
-        if (shouldMoveDown && index < lines.length - 1) { 
-          event.preventDefault(); 
-          activateLineForEditing(index + 1, 0);
-        } else {
-          // Allow default behavior (move cursor vertically within current textarea)
-        }
-      } else {
-        // For regular lines: always move down if not the last line
-        if (index < lines.length - 1) { 
-          event.preventDefault(); 
-          activateLineForEditing(index + 1, 0);
-        } else {
-          // Allow default behavior (move cursor vertically within current textarea)
-          // This else block is technically not needed for single-line textareas if it's the last line,
-          // but keeping it for consistency if any default behavior is desired.
-        }
+  function handleArrowDownKey(event: KeyboardEvent, index: number) {
+    const textarea = event.target as HTMLTextAreaElement;
+    const { selectionStart, value } = textarea;
+    const isCurrentLineCodeBlock = isCodeBlockFence(lines[index].text);
+
+    if (isCurrentLineCodeBlock) {
+      // For code blocks: move down if cursor is on the last visual line
+      const lastNewlineIndex = value.lastIndexOf('\n');
+      const shouldMoveDown = (selectionStart >= lastNewlineIndex + 1 || (lastNewlineIndex === -1 && selectionStart === value.length));
+
+      if (shouldMoveDown && index < lines.length - 1) { 
+        event.preventDefault(); 
+        activateLineForEditing(index + 1, 0);
       }
+    } else {
+      // For regular lines: always move down if not the last line
+      if (index < lines.length - 1) { 
+        event.preventDefault(); 
+        activateLineForEditing(index + 1, 0);
+      }
+    }
+  }
+
+  function handleKeyDown(event: KeyboardEvent, index: number) {
+    switch (event.key) {
+      case 'Enter':
+        return handleEnterKey(event, index);
+      case 'Backspace':
+        return handleBackspaceKey(event, index);
+      case 'ArrowUp':
+        return handleArrowUpKey(event, index);
+      case 'ArrowDown':
+        return handleArrowDownKey(event, index);
     }
   }
 
@@ -249,7 +265,8 @@
         pendingFocusPos = null;
       }
       mermaid.run(); // Initialize and render Mermaid diagrams
-    });</script>
+    });
+</script>
 
 <main>
   <div class="editor">
