@@ -88,7 +88,9 @@
       <div class="code-editor-panes">
         <textarea
           bind:this={textareaRef}
-          value={line.text.replace(/```$/, '')}
+          value={line.text.startsWith('```') && line.text.endsWith('\n```')
+            ? line.text.substring(0, line.text.length - 4) // Remove '\n```'
+            : line.text}
           on:keydown={handleKeyDown}
           on:input={handleInput}
           on:focus={handleFocus}

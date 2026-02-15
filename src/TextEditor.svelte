@@ -105,11 +105,19 @@
       const line = lines[index];
 
       let newText = text;
-      // If the original line was a code block, ensure the new text is also treated as such
-      // by re-attaching the closing fence. This is necessary because the textarea
-      // for code blocks does not contain the closing fence during editing.
-      if (isCodeBlockFence(line.text)) {
-          newText = `${text}\n\`\`\``;
+
+      // If the current text from the textarea starts with a code fence
+      if (text.startsWith('```')) {
+          // And it does NOT end with a code fence (meaning it's an unclosed code block)
+          // Then, for rendering purposes, append a closing fence with a single newline.
+          // This allows renderMarkdown to treat it as a closed block for highlighting/mermaid,
+          // but avoids adding an extra newline if the user already added one before the closing fence.
+          if (!text.endsWith('```')) {
+              // Check if there's already a newline at the end before adding another one
+              const needsNewline = !text.endsWith('\n');
+              newText = `${text}${needsNewline ? '\n' : ''}\`\`\``;
+          }
+          // If it already ends with '```', newText remains `text` (it's already a closed block).
       }
 
       if (line.text !== newText) {

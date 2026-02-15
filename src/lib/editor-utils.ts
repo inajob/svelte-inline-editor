@@ -35,18 +35,29 @@ export function renderMarkdown(text: string): string {
       .replace(/'/g, "&#039;");
 
   const isCodeBlock = text.startsWith('```');
-  if (isCodeBlock) {
-    const codeBlockMatch = text.match(/^```(\w*)([\s\S]*?)```$/);
-    let code = '';
-    let language = 'plaintext';
-
-    if (codeBlockMatch) {
-      language = codeBlockMatch[1] || 'plaintext';
-      code = codeBlockMatch[2];
-    } else {
-      code = text.substring(text.indexOf('```') + 3);
-    }
-
+      if (isCodeBlock) {
+        const codeBlockMatch = text.match(/^```(\w*)([\s\S]*?)```$/);
+        
+        // Handle unclosed code blocks: render the raw text in a pre tag
+        if (!codeBlockMatch) {
+          const language = getCodeBlockLanguage(text) || 'plaintext';
+          // Render the entire raw text, including the opening ```
+          let highlightedCode = text; // Default to raw text
+          try {
+            highlightedCode = hljs.highlight(text, {language: language}).value;
+          } catch (e) {
+            highlightedCode = hljs.highlight(text, {language: 'plaintext'}).value;
+          }
+          return `<pre><code class="language-${language}">${highlightedCode}</code></pre>`;
+        }
+  
+        // Existing logic for closed code blocks
+        let code = '';
+        let language = 'plaintext';
+  
+        // The codeBlockMatch is guaranteed to exist here due to the `if (!codeBlockMatch)` check above.
+        language = codeBlockMatch[1] || 'plaintext';
+        code = codeBlockMatch[2];
     if (language === 'mermaid') {
       try {
         // Mermaid needs an ID for its container
