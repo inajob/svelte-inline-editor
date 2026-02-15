@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { afterUpdate, tick } from 'svelte';
+  import { afterUpdate } from 'svelte';
   import hljs from 'highlight.js'; // Import highlight.js
   // Import a more distinct theme
   import 'highlight.js/styles/github.css'; 
@@ -17,19 +17,12 @@
     isCodeBlockFence,
     getCodeBlockLanguage,
     renderMarkdown,
-    getComputedStylesFromHtml,
-    autoGrow
+    getComputedStylesFromHtml
   } from './lib/editor-utils';
+  import type { Line } from './lib/types';
+  import LineComponent from './lib/Line.svelte';
 
   const dispatch = createEventDispatcher();
-
-  // Define line types for better structure
-  export interface Line {
-    id: number;
-    text: string;
-    renderedHtml: string;
-    computedStyles?: { fontSize: string | null; fontWeight: string | null };
-  }
 
   hljs.registerLanguage('javascript', javascript);
   hljs.registerLanguage('python', python);
@@ -87,13 +80,71 @@
 
   export let debugMode: boolean = false;
 
-  let textareaRefs: HTMLTextAreaElement[] = [];
-  let previewRefs: HTMLDivElement[] = []; 
-
   let pendingFocusIndex: number | null = null;
   let pendingFocusPos: number | null = null;
   let editingLineIndex: number | null = null;
 
+  // --- Component Event Handlers ---
+
+  function handleLineActivate(index: number) {
+    activateLineForEditing(index, 0);
+  }
+
+  function handleLineFocus(index: number) {
+    editingLineIndex = index;
+  }
+
+  function handleLineBlur() {
+    if (!debugMode) {
+      editingLineIndex = null;
+    }
+  }
+
+  function handleLineUpdate(event: CustomEvent, index: number) {
+      const { text, cursorPos } = event.detail;
+      const line = lines[index];
+
+      let newText = text;
+      // If the original line was a code block, ensure the new text is also treated as such
+      // by re-attaching the closing fence. This is necessary because the textarea
+      // for code blocks does not contain the closing fence during editing.
+      if (isCodeBlockFence(line.text)) {
+          newText = `${text}\n\`\`\``;
+      }
+
+      if (line.text !== newText) {
+          line.text = newText;
+          line.renderedHtml = renderMarkdown(line.text);
+          line.computedStyles = getComputedStylesFromHtml(line.renderedHtml);
+          lines = lines; // Trigger reactivity
+          dispatch('update', { lines });
+      }
+
+      // Request focus to be set again on the updated line
+      editingLineIndex = index;
+      pendingFocusIndex = index;
+      pendingFocusPos = cursorPos;
+  }
+
+  function handleLineKeyDown(event: CustomEvent, index: number) {
+      const { key, event: keyboardEvent } = event.detail;
+
+      // Default behavior is NOT prevented here.
+      // The individual handlers below are responsible for calling `preventDefault()`
+      // if and when it's appropriate for that specific key.
+      switch (key) {
+        case 'Enter':
+          return handleEnterKey(keyboardEvent, index);
+        case 'Backspace':
+          return handleBackspaceKey(keyboardEvent, index);
+        case 'ArrowUp':
+          return handleArrowUpKey(keyboardEvent, index);
+        case 'ArrowDown':
+          return handleArrowDownKey(keyboardEvent, index);
+      }
+  }
+
+  // --- Core Logic ---
 
   // Unified function to activate a line for editing
   function activateLineForEditing(targetIndex: number, targetCursorPos: number) {
@@ -103,16 +154,6 @@
     editingLineIndex = targetIndex; 
     pendingFocusIndex = targetIndex;
     pendingFocusPos = targetCursorPos;
-  }
-
-  function handleFocus(index: number) {
-    editingLineIndex = index;
-  }
-
-  function handleBlur() {
-    if (!debugMode) {
-      editingLineIndex = null;
-    }
   }
 
   function handleEnterKey(event: KeyboardEvent, index: number) {
@@ -221,131 +262,34 @@
     }
   }
 
-  function handleKeyDown(event: KeyboardEvent, index: number) {
-    switch (event.key) {
-      case 'Enter':
-        return handleEnterKey(event, index);
-      case 'Backspace':
-        return handleBackspaceKey(event, index);
-      case 'ArrowUp':
-        return handleArrowUpKey(event, index);
-      case 'ArrowDown':
-        return handleArrowDownKey(event, index);
-    }
-  }
+  afterUpdate(() => {
+    // Focus management logic has been moved to the Line.svelte component.
+    // This parent component now only needs to ensure Mermaid diagrams are rendered
+    // and to reset the pending focus state after an update cycle.
+    mermaid.run(); 
 
-    afterUpdate(async () => {
-      if (pendingFocusIndex !== null && pendingFocusIndex >= 0 && pendingFocusIndex < lines.length) {
-        if (editingLineIndex !== pendingFocusIndex) {
-          editingLineIndex = pendingFocusIndex;
-          await tick();
-        }
-  
-        const targetTextarea = textareaRefs[pendingFocusIndex];
-        if (targetTextarea) {
-          const stylesToApply = lines[pendingFocusIndex].computedStyles;
-          if (stylesToApply) {
-              targetTextarea.style.fontSize = stylesToApply.fontSize || '';
-              targetTextarea.style.fontWeight = stylesToApply.fontWeight || '';
-          } else {
-              targetTextarea.style.fontSize = '';
-              targetTextarea.style.fontWeight = '';
-          }
-  
-          autoGrow(targetTextarea);
-  
-          targetTextarea.focus();
-          if (pendingFocusPos !== null) {
-              const adjustedPos = Math.min(pendingFocusPos, targetTextarea.value.length);
-              targetTextarea.setSelectionRange(adjustedPos, adjustedPos);
-          }
-        }
-  
-        pendingFocusIndex = null;
-        pendingFocusPos = null;
-      }
-      mermaid.run(); // Initialize and render Mermaid diagrams
-    });
+    if (pendingFocusIndex !== null) {
+      pendingFocusIndex = null;
+      pendingFocusPos = null;
+    }
+  });
 </script>
 
 <main>
   <div class="editor">
     {#each lines as line, index (line.id)}
-      {@const isCurrentLineCodeBlock = isCodeBlockFence(line.text)}
-      <div class="line" class:editing={editingLineIndex === index} class:code-block={line.text.trim().startsWith('```')}>
-        {#if editingLineIndex === index && line.text.trim().startsWith('```')}
-          <!-- When editing a code block, show 2-pane -->
-          <div class="code-editor-panes">
-            <textarea
-              bind:this={textareaRefs[index]}
-              value={isCodeBlockFence(line.text) ? line.text.replace(/\n```$/, '') : line.text}
-              on:keydown={(e) => handleKeyDown(e, index)}
-                            on:input={(e) => {
-                                const target = e.target as HTMLTextAreaElement;
-                                const currentCursorPos = target.selectionStart;
-                                let editedContent = target.value;
-              
-                                if (!isCodeBlockFence(editedContent)) {
-                                    lines[index].text = editedContent;
-                                    lines[index].renderedHtml = renderMarkdown(editedContent);
-                                } else {
-                                    let lang = getCodeBlockLanguage(editedContent) || '';
-                                    lines[index].text = `${editedContent}\n\`\`\``;
-                                    lines[index].renderedHtml = renderMarkdown(lines[index].text);
-                                }
-                                lines[index].computedStyles = getComputedStylesFromHtml(lines[index].renderedHtml); // Added
-                                autoGrow(target);
-                                lines = lines;
-                                dispatch('update', { lines }); // Emit update event
-                                pendingFocusIndex = index;
-                                pendingFocusPos = currentCursorPos;
-                            }}              on:focus={() => handleFocus(index)}
-              on:blur={handleBlur}
-            ></textarea>
-            <div class="code-preview-pane markdown-preview" bind:this={previewRefs[index]}>
-              {@html line.renderedHtml}
-            </div>
-          </div>
-        {:else if editingLineIndex === index}
-          <!-- When editing a regular line, show single textarea -->
-          <textarea
-            bind:this={textareaRefs[index]}
-            value={line.text}
-            on:keydown={(e) => handleKeyDown(e, index)}
-            on:input={(e) => {
-                const target = e.target as HTMLTextAreaElement;
-                const currentCursorPos = target.selectionStart;
-
-                lines[index].text = target.value;
-                lines[index].renderedHtml = renderMarkdown(lines[index].text);
-                lines[index].computedStyles = getComputedStylesFromHtml(lines[index].renderedHtml); // Added
-                autoGrow(target);
-                lines = lines;
-                dispatch('update', { lines }); // Emit update event
-                pendingFocusIndex = index;
-                pendingFocusPos = currentCursorPos;
-            }}
-            on:focus={() => handleFocus(index)}
-            on:blur={handleBlur}
-          ></textarea>
-        {/if}
-
-        {#if editingLineIndex !== index}
-          <!-- When not editing, show markdown preview -->
-          <div
-            class="markdown-preview"
-            bind:this={previewRefs[index]}
-            on:click={() => {
-              activateLineForEditing(index, 0);
-            }}
-          >
-            {@html line.renderedHtml}
-          </div>
-        {/if}
-
-      </div>
+      <LineComponent
+        {line}
+        isEditing={editingLineIndex === index}
+        {debugMode}
+        pendingFocusPos={pendingFocusIndex === index ? pendingFocusPos : null}
+        on:activateline={() => handleLineActivate(index)}
+        on:focusline={() => handleLineFocus(index)}
+        on:blurline={handleLineBlur}
+        on:update={(e) => handleLineUpdate(e, index)}
+        on:linekeydown={(e) => handleLineKeyDown(e, index)}
+      />
     {/each}
-
   </div>
 </main>
 
