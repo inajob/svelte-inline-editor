@@ -86,6 +86,14 @@
   let pendingFocusPos: number | null = null;
   let editingLineIndex: number | null = null;
 
+  function updateLineText(index: number, newText: string) {
+    const line = lines[index];
+    line.text = newText;
+    line.renderedHtml = renderMarkdown(line.text);
+    line.computedStyles = getComputedStylesFromHtml(line.renderedHtml);
+    lines = lines; // Trigger reactivity
+  }
+
   // --- Component Event Handlers ---
 
   function handleLineActivate(index: number) {
@@ -132,10 +140,7 @@
 
 
       if (line.text !== newText) {
-          line.text = newText;
-          line.renderedHtml = renderMarkdown(line.text);
-          line.computedStyles = getComputedStylesFromHtml(line.renderedHtml);
-          lines = lines; // Trigger reactivity
+          updateLineText(index, newText);
           dispatch('update', { lines });
       }
 
@@ -188,10 +193,7 @@
         newCursorPos = actualCursorPos + 2; // Cursor moves after the newly added "- "
     }
 
-    line.text = newText;
-    line.renderedHtml = renderMarkdown(line.text);
-    line.computedStyles = getComputedStylesFromHtml(line.renderedHtml);
-    lines = lines; // Trigger reactivity
+    updateLineText(index, newText);
     activateLineForEditing(index, newCursorPos);
   }
 
@@ -217,10 +219,7 @@
     
     // Only update if text has changed
     if (newText !== line.text) {
-      line.text = newText;
-      line.renderedHtml = renderMarkdown(line.text);
-      line.computedStyles = getComputedStylesFromHtml(line.renderedHtml);
-      lines = lines; // Trigger reactivity
+      updateLineText(index, newText);
       activateLineForEditing(index, newCursorPos);
     }
   }
@@ -250,7 +249,7 @@
       // Manual newline insertion for code blocks when preventDefault is called
       const originalText = currentLine.text;
       const newText = originalText.slice(0, selectionStart) + '\n' + originalText.slice(selectionStart);
-      currentLine.text = newText;
+      updateLineText(index, newText);
       lines = lines; // Trigger reactivity
       activateLineForEditing(index, selectionStart + 1);
       return; 
@@ -263,9 +262,7 @@
     // Case 1: Pressing Enter on an empty list item (`- |`)
     if (isListItem && value.trim() === bullet) {
       currentLine.text = leadingSpaces.trimEnd(); // Remove bullet, keep indentation
-      currentLine.renderedHtml = renderMarkdown(currentLine.text);
-      currentLine.computedStyles = getComputedStylesFromHtml(currentLine.renderedHtml);
-      lines = lines; // Trigger reactivity
+      updateLineText(index, currentLine.text);
       activateLineForEditing(index, leadingSpaces.length);
       return;
     }
@@ -276,8 +273,7 @@
 
     // Update the current line's text
     currentLine.text = leadingSpaces + contentBeforeCursor;
-    currentLine.renderedHtml = renderMarkdown(currentLine.text);
-    currentLine.computedStyles = getComputedStylesFromHtml(currentLine.renderedHtml);
+    updateLineText(index, currentLine.text);
     
     // Create the new line's text
     let newLineText;

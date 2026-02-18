@@ -3,7 +3,6 @@
   import type { Line } from './types';
   import {
     isCodeBlockFence,
-    getComputedStylesFromHtml,
     autoGrow,
     parseIndentation // Import for generic indentation
   } from './editor-utils';
