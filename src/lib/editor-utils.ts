@@ -18,6 +18,47 @@ export function getCodeBlockLanguage(text: string): string | null {
   return match ? match[1] || 'plaintext' : null;
 }
 
+export function parseListItem(text: string): { indent: number; bullet: string; content: string; isListItem: boolean } {
+  // Matches leading spaces, then -, *, or +, then a space, then content
+  const listItemRegex = /^( *)(?:(-|\*|\+))\s(.*)/; 
+  const match = text.match(listItemRegex);
+
+  if (match) {
+    const leadingSpaces = match[1];
+    const bulletChar = match[2];
+    const content = match[3];
+    // Assuming 2 spaces per indent level for simplicity.
+    // If Markdown supports other indentations (e.g., tabs), this needs adjustment.
+    const indent = leadingSpaces.length / 2; 
+
+    return {
+      indent,
+      bullet: bulletChar,
+      content,
+      isListItem: true,
+    };
+  }
+
+  return {
+    indent: 0,
+    bullet: '',
+    content: text,
+    isListItem: false,
+  };
+}
+
+export function parseIndentation(text: string): { indent: number; content: string } {
+  const match = text.match(/^( *)(.*)/s); // Use 's' flag to allow . to match newline
+  if (match) {
+    const leadingSpaces = match[1] || '';
+    const content = match[2] || '';
+    // Use Math.floor because odd numbers of spaces might not be intentional indentation
+    const indent = Math.floor(leadingSpaces.length / 2); 
+    return { indent, content };
+  }
+  return { indent: 0, content: text };
+}
+
 export function renderMarkdown(text: string): string {
   console.log('renderMarkdown received text:', text); // DEBUG LOG
   // For empty or whitespace-only lines, render a non-breaking space
@@ -30,7 +71,7 @@ export function renderMarkdown(text: string): string {
   const sanitizeContent = (content: string) => content
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
+      .replace(/>/g, ">") // Allow > for markdown rendering
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
 
@@ -62,13 +103,6 @@ export function renderMarkdown(text: string): string {
       try {
         // Mermaid needs an ID for its container
         const id = 'mermaid-' + Math.random().toString(36).substring(2, 9);
-        // Render mermaid and get the SVG
-        // mermaid.render returns a promise, but we are in a synchronous function.
-        // For now, we'll return a placeholder and rely on client-side rendering later.
-        // Or, for initial render, we can do a synchronous render if possible, or mark for post-render processing.
-        // For now, let's assume we can directly get the SVG.
-        // This will require mermaid.run() or similar in afterUpdate.
-        // For initial render, we'll just return a div that mermaid can target.
         return `<div class="mermaid">${code}</div>`;
 
       } catch (e) {
@@ -95,8 +129,21 @@ ${code}</code></pre>`;
   resultHtml = resultHtml.replace(/^(#+)\s(.+)/, (fullMatch, hashes, content) => {
       markdownApplied = true;
       const level = hashes.length;
-      return `<h${level}>${sanitizeContent(fullMatch)}</h${level}>`;
+      return `<h${level}>${sanitizeContent(content)}</h${level}>`;
   });
+
+  // List items (rendering for preview to match editing style)
+  const parsed = parseListItem(text);
+  if (parsed.isListItem) {
+    markdownApplied = true;
+    const indentPixels = parsed.indent * 24; // Assuming 24px per indent level
+    return `
+      <div style="display: flex; align-items: flex-start; padding-left: ${indentPixels}px;">
+        <div style="flex-shrink: 0; width: 20px; text-align: center; padding-top: 2px;">•</div>
+        <div>${sanitizeContent(parsed.content)}</div>
+      </div>
+    `;
+  }
 
   // Inline formatting
   resultHtml = resultHtml.replace(/\*\*(.*?)\*\*/g, (_, content) => {
@@ -144,7 +191,7 @@ export function getComputedStylesFromHtml(htmlContent: string): { fontSize: stri
       tempDiv.style.overflow = 'hidden';
       document.body.appendChild(tempDiv);      tempDiv.innerHTML = htmlContent;
 
-  const childElements = tempDiv.querySelectorAll('h1, h2, p, strong, em, code, pre');
+  const childElements = tempDiv.querySelectorAll('h1, h2, p, strong, em, code, pre, div'); // Added div for list items
   const targetElement = childElements.length > 0 ? childElements[0] : tempDiv;
   const computedStyle = window.getComputedStyle(targetElement);
 
@@ -155,4 +202,3 @@ export function getComputedStylesFromHtml(htmlContent: string): { fontSize: stri
   document.body.removeChild(tempDiv);
   return styles;
 }
-

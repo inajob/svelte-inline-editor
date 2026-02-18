@@ -17,7 +17,9 @@
     isCodeBlockFence,
     getCodeBlockLanguage,
     renderMarkdown,
-    getComputedStylesFromHtml
+    getComputedStylesFromHtml,
+    parseListItem, // Import parseListItem
+    parseIndentation // Import parseIndentation
   } from './lib/editor-utils';
   import type { Line } from './lib/types';
   import LineComponent from './lib/Line.svelte';
@@ -103,15 +105,23 @@
   function handleLineUpdate(event: CustomEvent, index: number) {
       const { text, cursorPos } = event.detail;
       const line = lines[index];
-
       let newText = text;
+
+      // --- List Item Auto-De-listify Logic ---
+      const wasListItem = parseListItem(line.text).isListItem;
+      const isNowListItem = parseListItem(newText).isListItem;
+
+      if (wasListItem && !isNowListItem) {
+        // If it was a list item, but the user's edit (e.g., deleting '- ')
+        // made it no longer a list item, then we should also remove the indentation.
+        newText = newText.trimStart();
+      }
+      // --- End List Item Auto-De-listify Logic ---
 
       // If the current text from the textarea starts with a code fence
       if (text.startsWith('```')) {
           // And it does NOT end with a code fence (meaning it's an unclosed code block)
           // Then, for rendering purposes, append a closing fence with a single newline.
-          // This allows renderMarkdown to treat it as a closed block for highlighting/mermaid,
-          // but avoids adding an extra newline if the user already added one before the closing fence.
           if (!text.endsWith('```')) {
               // Check if there's already a newline at the end before adding another one
               const needsNewline = !text.endsWith('\n');
@@ -119,6 +129,7 @@
           }
           // If it already ends with '```', newText remains `text` (it's already a closed block).
       }
+
 
       if (line.text !== newText) {
           line.text = newText;
@@ -131,7 +142,9 @@
       // Request focus to be set again on the updated line
       editingLineIndex = index;
       pendingFocusIndex = index;
-      pendingFocusPos = cursorPos;
+      // Adjust cursor position if we de-listified the line
+      const finalCursorPos = newText.length < text.length ? Math.max(0, cursorPos - (text.length - newText.length)) : cursorPos;
+      pendingFocusPos = finalCursorPos;
   }
 
   function handleLineKeyDown(event: CustomEvent, index: number) {
@@ -149,8 +162,69 @@
           return handleArrowUpKey(keyboardEvent, index);
         case 'ArrowDown':
           return handleArrowDownKey(keyboardEvent, index);
+        case 'Tab':
+          return handleTabKey(keyboardEvent, index);
+        case 'Shift+Tab':
+          return handleShiftTabKey(keyboardEvent, index);
       }
   }
+
+  // --- Indentation Logic ---
+
+  function handleTabKey(event: KeyboardEvent, index: number) {
+    event.preventDefault();
+    const line = lines[index];
+    const parsedLine = parseListItem(line.text);
+    let newText = line.text;
+    const actualCursorPos = (event.target as HTMLTextAreaElement).selectionStart; // Cursor position in textarea content
+    let newCursorPos = actualCursorPos; 
+
+    if (parsedLine.isListItem) {
+        newText = '  ' + line.text; // Increase indentation
+        // newCursorPos remains actualCursorPos as per user's request for existing list items
+    } else {
+        // Convert the line to a list item
+        newText = '- ' + newText;
+        newCursorPos = actualCursorPos + 2; // Cursor moves after the newly added "- "
+    }
+
+    line.text = newText;
+    line.renderedHtml = renderMarkdown(line.text);
+    line.computedStyles = getComputedStylesFromHtml(line.renderedHtml);
+    lines = lines; // Trigger reactivity
+    activateLineForEditing(index, newCursorPos);
+  }
+
+  function handleShiftTabKey(event: KeyboardEvent, index: number) {
+    event.preventDefault();
+    const line = lines[index];
+    const parsedLine = parseListItem(line.text);
+    let newText = line.text;
+    const actualCursorPos = (event.target as HTMLTextAreaElement).selectionStart; // Cursor position in textarea content
+    let newCursorPos = actualCursorPos; // Cursor should stay at the same visual position
+
+    if (parsedLine.isListItem) {
+        if (parsedLine.indent > 0) {
+            newText = newText.substring(2); // Remove two spaces for dedentation
+            // newCursorPos does not need to change relative to the content in the textarea
+        } else {
+            // If it's a list item at indent 0, remove the bullet and its space
+            newText = parsedLine.content; 
+            // newCursorPos does not need to change relative to the content in the textarea
+        }
+    }
+    // No action for non-list items, as per the new requirement
+    
+    // Only update if text has changed
+    if (newText !== line.text) {
+      line.text = newText;
+      line.renderedHtml = renderMarkdown(line.text);
+      line.computedStyles = getComputedStylesFromHtml(line.renderedHtml);
+      lines = lines; // Trigger reactivity
+      activateLineForEditing(index, newCursorPos);
+    }
+  }
+
 
   // --- Core Logic ---
 
@@ -165,33 +239,68 @@
   }
 
   function handleEnterKey(event: KeyboardEvent, index: number) {
+    event.preventDefault();
+    
     const textarea = event.target as HTMLTextAreaElement;
-    const { selectionStart, selectionEnd, value } = textarea;
-    const isCurrentLineCodeBlock = isCodeBlockFence(lines[index].text);
+    const { selectionStart, value } = textarea;
+    const currentLine = lines[index];
 
-    if (isCurrentLineCodeBlock) {
-      // Allow native textarea Enter behavior for code blocks
+    // Check for code blocks first
+    if (isCodeBlockFence(currentLine.text)) {
+      // Manual newline insertion for code blocks when preventDefault is called
+      const originalText = currentLine.text;
+      const newText = originalText.slice(0, selectionStart) + '\n' + originalText.slice(selectionStart);
+      currentLine.text = newText;
+      lines = lines; // Trigger reactivity
+      activateLineForEditing(index, selectionStart + 1);
       return; 
     }
-    // For regular lines: split the line
-    event.preventDefault();
 
-    const currentLine = lines[index];
-    const textBeforeCursor = value.substring(0, selectionStart);
-    const textAfterCursor = value.substring(selectionEnd);
+    const { indent, content: originalContentWithoutLeadingSpaces } = parseIndentation(currentLine.text);
+    const { isListItem, bullet } = parseListItem(currentLine.text);
+    const leadingSpaces = '  '.repeat(indent);
+    
+    // Case 1: Pressing Enter on an empty list item (`- |`)
+    if (isListItem && value.trim() === bullet) {
+      currentLine.text = leadingSpaces.trimEnd(); // Remove bullet, keep indentation
+      currentLine.renderedHtml = renderMarkdown(currentLine.text);
+      currentLine.computedStyles = getComputedStylesFromHtml(currentLine.renderedHtml);
+      lines = lines; // Trigger reactivity
+      activateLineForEditing(index, leadingSpaces.length);
+      return;
+    }
 
-    currentLine.text = textBeforeCursor;
+    // Split the displayed content at the cursor
+    const contentBeforeCursor = value.substring(0, selectionStart);
+    const contentAfterCursor = value.substring(selectionStart);
+
+    // Update the current line's text
+    currentLine.text = leadingSpaces + contentBeforeCursor;
     currentLine.renderedHtml = renderMarkdown(currentLine.text);
+    currentLine.computedStyles = getComputedStylesFromHtml(currentLine.renderedHtml);
+    
+    // Create the new line's text
+    let newLineText;
+    if (isListItem) {
+      // New line should also be a list item with same indentation
+      newLineText = leadingSpaces + bullet + ' ' + contentAfterCursor;
+    } else {
+      // New line just inherits indentation
+      newLineText = leadingSpaces + contentAfterCursor;
+    }
 
     const newLine: Line = { 
       id: nextId++, 
-      text: textAfterCursor, 
-      renderedHtml: renderMarkdown(textAfterCursor)
+      text: newLineText, 
+      renderedHtml: renderMarkdown(newLineText),
+      computedStyles: getComputedStylesFromHtml(renderMarkdown(newLineText))
     };
 
     lines = [...lines.slice(0, index + 1), newLine, ...lines.slice(index + 1)];
 
-    activateLineForEditing(index + 1, 0);
+    // Activate the new line, placing cursor at the start of its editable content
+    const newCursorPos = (isListItem ? bullet.length + 1 : 0); // +1 for the space after bullet
+    activateLineForEditing(index + 1, newCursorPos);
   }
 
   function handleBackspaceKey(event: KeyboardEvent, index: number) {
@@ -216,11 +325,11 @@
 
       // For regular lines: merge with previous line
       event.preventDefault(); 
-      const combinedText = previousLine.text + value; // value is current line's text
+      const combinedText = previousLine.text + lines[index].text; // Use lines[index].text instead of value
       previousLine.text = combinedText;
       previousLine.renderedHtml = renderMarkdown(combinedText);
       lines = lines.filter((_, i) => i !== index);
-      activateLineForEditing(index - 1, previousLine.text.length);
+      activateLineForEditing(index - 1, previousLine.text.length - lines[index].text.length);
     }
   }
 

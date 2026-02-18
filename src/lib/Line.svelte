@@ -3,9 +3,9 @@
   import type { Line } from './types';
   import {
     isCodeBlockFence,
-    renderMarkdown,
     getComputedStylesFromHtml,
-    autoGrow
+    autoGrow,
+    parseIndentation // Import for generic indentation
   } from './editor-utils';
 
   export let line: Line;
@@ -18,12 +18,19 @@
   let textareaRef: HTMLTextAreaElement;
   let previewRef: HTMLDivElement;
 
-  // Move @const to a reactive declaration inside the script block
   $: isCurrentLineCodeBlock = isCodeBlockFence(line.text);
+  $: indentation = parseIndentation(line.text); // For generic indentation
 
   function handleKeyDown(event: KeyboardEvent) {
-    // 特定のキー操作を親に通知する
-    if (['Enter', 'Backspace', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+    // For Enter and Tab, we always want to prevent default and let the parent handle it.
+    if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault(); 
+        const key = event.key === 'Tab' && event.shiftKey ? 'Shift+Tab' : event.key;
+        dispatch('linekeydown', { key, event });
+    } 
+    // For other keys, dispatch without preventing default initially.
+    // The parent can call preventDefault on the received event object if needed.
+    else if (['Backspace', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
         dispatch('linekeydown', { key: event.key, event });
     }
   }
@@ -33,15 +40,18 @@
     const currentCursorPos = target.selectionStart;
     const editedContent = target.value;
 
-    // テキストの更新を親に通知する
+    // Reconstruct the full line by prepending the current indentation
+    // The `editedContent` now includes the Markdown bullet (e.g., "- ") if present.
+    const newText = '  '.repeat(indentation.indent) + editedContent;
+
     dispatch('update', { 
-        text: editedContent, 
+        text: newText, 
         cursorPos: currentCursorPos 
     });
     
-    // 入力に応じてテキストエリアの高さを調整
     autoGrow(target);
   }
+
 
   function handleFocus() {
     dispatch('focusline');
@@ -58,7 +68,6 @@
   }
 
   afterUpdate(() => {
-    // この行が編集モードになった時にフォーカスやスタイルを適用する
     if (isEditing && textareaRef) {
       const stylesToApply = line.computedStyles;
       if (stylesToApply) {
@@ -102,14 +111,16 @@
       </div>
     {:else}
       <!-- 通常行編集中 -->
-      <textarea
-        bind:this={textareaRef}
-        value={line.text}
-        on:keydown={handleKeyDown}
-        on:input={handleInput}
-        on:focus={handleFocus}
-        on:blur={handleBlur}
-      ></textarea>
+      <div class="editor-line" style="padding-left: {indentation.indent * 24}px;">
+        <textarea
+          bind:this={textareaRef}
+          value={indentation.content}
+          on:keydown={handleKeyDown}
+          on:input={handleInput}
+          on:focus={handleFocus}
+          on:blur={handleBlur}
+        ></textarea>
+      </div>
     {/if}
   {:else}
     <!-- 非編集中 (プレビュー表示) -->
@@ -172,7 +183,7 @@
   }
   
   .line.editing {
-    background-color: #f0f0f0;
+    background-color: #f0f0f0; /* Light gray */
   }
 
   textarea:focus {
@@ -225,5 +236,10 @@
     border-radius: 4px;
     overflow: auto; 
     background-color: #f6f8fa; 
+  }
+  
+  .editor-line {
+    /* This class is a container for the textarea to handle indentation padding */
+    width: 100%;
   }
 </style>
