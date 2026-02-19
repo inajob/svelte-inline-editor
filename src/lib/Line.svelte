@@ -263,4 +263,32 @@
     /* This class is a container for the textarea to handle indentation padding */
     width: 100%;
   }
+
+  @media (prefers-color-scheme: dark) {
+    /* Main editing line background */
+    .line.editing {
+      background-color: #333; /* Dark gray for dark mode editing */
+    }
+
+    /* Inline code snippets */
+    .markdown-preview :global(code) { 
+      background-color: #333;
+    }
+
+    /* Code block preview pane */
+    .code-editor-panes .code-preview-pane {
+      background-color: #2d2d2d; 
+      border-color: #444;
+    }
+    
+    /* Heading markdown symbols */
+    :global(.markdown-preview h1)::before,
+    :global(.markdown-preview h2)::before,
+    :global(.markdown-preview h3)::before,
+    :global(.markdown-preview h4)::before,
+    :global(.markdown-preview h5)::before,
+    :global(.markdown-preview h6)::before {
+      color: #aaa; /* Increase contrast for dark mode */
+    }
+  }
 </style>
