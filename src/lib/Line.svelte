@@ -31,7 +31,7 @@
     } 
     // For other keys, dispatch without preventing default initially.
     // The parent can call preventDefault on the received event object if needed.
-    else if (['Backspace', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
+    else if ([' ', 'Backspace', 'ArrowUp', 'ArrowDown'].includes(event.key)) {
         dispatch('linekeydown', { key: event.key, event });
     }
   }

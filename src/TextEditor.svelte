@@ -162,7 +162,12 @@
         case 'Enter':
           return handleEnterKey(keyboardEvent, index);
         case 'Backspace':
-          return handleBackspaceKey(keyboardEvent, index);
+            // Try to dedent first. If dedent handles the event, stop.
+            if (handleBackspaceDedent(keyboardEvent, index)) {
+                return;
+            }
+            // Otherwise, fall through to original handleBackspaceKey
+            return handleBackspaceKey(keyboardEvent, index);
         case 'ArrowUp':
           return handleArrowUpKey(keyboardEvent, index);
         case 'ArrowDown':
@@ -171,6 +176,71 @@
           return handleTabKey(keyboardEvent, index);
         case 'Shift+Tab':
           return handleShiftTabKey(keyboardEvent, index);
+        case ' ':
+          return handleSpaceKey(keyboardEvent, index);
+      }
+  }
+
+  function handleBackspaceDedent(event: KeyboardEvent, index: number): boolean {
+      const textarea = event.target as HTMLTextAreaElement;
+      const { selectionStart, selectionEnd } = textarea;
+
+      // Only act if no selection and cursor is at or before index 2
+      if (selectionStart !== selectionEnd || selectionStart > 2) {
+          return false; // Not handled by this function, let other handlers process
+      }
+
+      const line = lines[index];
+      const parsedLine = parseListItem(line.text);
+
+      if (parsedLine.isListItem) {
+          event.preventDefault(); // This event is handled by dedenting
+          
+          let newText = line.text;
+          let newCursorPos = selectionStart; 
+
+          if (parsedLine.indent > 0) {
+              newText = newText.substring(2); // Remove two spaces
+          } else {
+              // Level 0 list item, remove the bullet and its space
+              newText = parsedLine.content; 
+          }
+          
+          updateLineText(index, newText);
+          activateLineForEditing(index, newCursorPos);
+          return true; // Successfully handled
+      }
+      return false; // Not a list item or not at specified position, not handled
+  }
+
+  function handleSpaceKey(event: KeyboardEvent, index: number) {
+      const textarea = event.target as HTMLTextAreaElement;
+      const { selectionStart, selectionEnd } = textarea;
+
+      // Do nothing if there's a selection
+      if (selectionStart !== selectionEnd) {
+          return;
+      }
+
+      const line = lines[index];
+      const { isListItem } = parseListItem(line.text);
+
+      // Requirement 2: Indent list item if space is pressed near the start
+      if (isListItem && selectionStart <= 2) {
+          event.preventDefault();
+          const newText = '  ' + line.text; // Add two spaces for indentation
+          updateLineText(index, newText);
+          activateLineForEditing(index, selectionStart + 2); // Move cursor past the new spaces
+          return;
+      }
+
+      // Requirement 1: Create list item if space is pressed at the very start of a non-list line
+      if (!isListItem && selectionStart === 0) {
+          event.preventDefault();
+          const newText = '- ' + line.text; // Prepend bullet
+          updateLineText(index, newText);
+          activateLineForEditing(index, 2); // Cursor at start of content
+          return;
       }
   }
 
