@@ -201,6 +201,28 @@
 
   :global(.markdown-preview h1) { font-size: 2em; font-weight: bold; line-height: normal; }
   :global(.markdown-preview h2) { font-size: 1.5em; font-weight: bold; line-height: normal; }
+  :global(.markdown-preview h3) { font-size: 1.25em; font-weight: bold; line-height: normal; }
+  :global(.markdown-preview h4) { font-size: 1em; font-weight: bold; line-height: normal; }
+  :global(.markdown-preview h5) { font-size: 0.875em; font-weight: bold; line-height: normal; }
+  :global(.markdown-preview h6) { font-size: 0.85em; font-weight: bold; line-height: normal; }
+
+  :global(.markdown-preview h1)::before,
+  :global(.markdown-preview h2)::before,
+  :global(.markdown-preview h3)::before,
+  :global(.markdown-preview h4)::before,
+  :global(.markdown-preview h5)::before,
+  :global(.markdown-preview h6)::before {
+    color: #888; /* Lighter color for the markdown symbol */
+    margin-right: 0.5em;
+  }
+
+  :global(.markdown-preview h1)::before { content: '# '; }
+  :global(.markdown-preview h2)::before { content: '## '; }
+  :global(.markdown-preview h3)::before { content: '### '; }
+  :global(.markdown-preview h4)::before { content: '#### '; }
+  :global(.markdown-preview h5)::before { content: '##### '; }
+  :global(.markdown-preview h6)::before { content: '###### '; }
+
   .markdown-preview :global(p),
   .markdown-preview :global(strong),
   .markdown-preview :global(em),
