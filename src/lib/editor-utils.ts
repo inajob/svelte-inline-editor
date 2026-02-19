@@ -136,7 +136,7 @@ ${code}</code></pre>`;
   const parsed = parseListItem(text);
   if (parsed.isListItem) {
     markdownApplied = true;
-    const indentPixels = parsed.indent * 24; // Assuming 24px per indent level
+    const indentPixels = parsed.indent * 16; // Assuming 16px per indent level (8px per space)
     return `
       <div style="display: flex; align-items: flex-start; padding-left: ${indentPixels}px;">
         <div style="flex-shrink: 0; width: 20px; text-align: center; padding-top: 2px;">•</div>

@@ -4,7 +4,8 @@
   import {
     isCodeBlockFence,
     autoGrow,
-    parseIndentation // Import for generic indentation
+    parseIndentation,
+    parseListItem
   } from './editor-utils';
 
   export let line: Line;
@@ -18,7 +19,8 @@
   let previewRef: HTMLDivElement;
 
   $: isCurrentLineCodeBlock = isCodeBlockFence(line.text);
-  $: indentation = parseIndentation(line.text); // For generic indentation
+  $: indentation = parseIndentation(line.text);
+  $: isListItem = parseListItem(line.text).isListItem;
 
   function handleKeyDown(event: KeyboardEvent) {
     // For Enter and Tab, we always want to prevent default and let the parent handle it.
@@ -37,11 +39,12 @@
   function handleInput(event: Event) {
     const target = event.target as HTMLTextAreaElement;
     const currentCursorPos = target.selectionStart;
-    const editedContent = target.value;
+    let newText = target.value;
 
-    // Reconstruct the full line by prepending the current indentation
-    // The `editedContent` now includes the Markdown bullet (e.g., "- ") if present.
-    const newText = '  '.repeat(indentation.indent) + editedContent;
+    if (isListItem) {
+      // Reconstruct the full line by prepending the current indentation
+      newText = '  '.repeat(indentation.indent) + newText;
+    }
 
     dispatch('update', { 
         text: newText, 
@@ -110,10 +113,10 @@
       </div>
     {:else}
       <!-- 通常行編集中 -->
-      <div class="editor-line" style="padding-left: {indentation.indent * 24}px;">
+      <div class="editor-line" style="padding-left: {isListItem ? indentation.indent * 16 : 0}px;">
         <textarea
           bind:this={textareaRef}
-          value={indentation.content}
+          value={isListItem ? indentation.content : line.text}
           on:keydown={handleKeyDown}
           on:input={handleInput}
           on:focus={handleFocus}
