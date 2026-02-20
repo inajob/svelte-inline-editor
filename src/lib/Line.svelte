@@ -17,6 +17,7 @@
 
   let textareaRef: HTMLTextAreaElement;
   let previewRef: HTMLDivElement;
+  let isComposing = false;
 
   $: isCurrentLineCodeBlock = isCodeBlockFence(line.text);
   $: indentation = parseIndentation(line.text);
@@ -37,6 +38,8 @@
   }
 
   function handleInput(event: Event) {
+    if (isComposing) return;
+
     const target = event.target as HTMLTextAreaElement;
     const currentCursorPos = target.selectionStart;
     let newText = target.value;
@@ -54,6 +57,14 @@
     autoGrow(target);
   }
 
+  function handleCompositionStart() {
+    isComposing = true;
+  }
+
+  function handleCompositionEnd(event: CompositionEvent) {
+    isComposing = false;
+    handleInput(event); // Trigger update after composition ends
+  }
 
   function handleFocus() {
     dispatch('focusline');
@@ -106,6 +117,8 @@
           on:input={handleInput}
           on:focus={handleFocus}
           on:blur={handleBlur}
+          on:compositionstart={handleCompositionStart}
+          on:compositionend={handleCompositionEnd}
         ></textarea>
         <div class="code-preview-pane markdown-preview" bind:this={previewRef}>
           {@html line.renderedHtml}
@@ -121,6 +134,8 @@
           on:input={handleInput}
           on:focus={handleFocus}
           on:blur={handleBlur}
+          on:compositionstart={handleCompositionStart}
+          on:compositionend={handleCompositionEnd}
         ></textarea>
       </div>
     {/if}
