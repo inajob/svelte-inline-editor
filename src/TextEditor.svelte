@@ -155,6 +155,10 @@
   function handleLineKeyDown(event: CustomEvent, index: number) {
       const { key, event: keyboardEvent } = event.detail;
 
+      if (keyboardEvent.isComposing || keyboardEvent.keyCode === 229) {
+        return;
+      }
+
       // Default behavior is NOT prevented here.
       // The individual handlers below are responsible for calling `preventDefault()`
       // if and when it's appropriate for that specific key.
