@@ -286,7 +286,9 @@
         } else {
             // If it's a list item at indent 0, remove the bullet and its space
             newText = parsedLine.content; 
-            // newCursorPos does not need to change relative to the content in the textarea
+            // The textarea content changes from "- content" to "content",
+            // so we must adjust the cursor position to account for the removed bullet and space.
+            newCursorPos = Math.max(0, actualCursorPos - (parsedLine.bullet.length + 1));
         }
     }
     // No action for non-list items, as per the new requirement
