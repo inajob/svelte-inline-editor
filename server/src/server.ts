@@ -1,6 +1,7 @@
 import http from 'http';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import { URL } from 'url';
 import { handlePagesRoute } from './routes/pages.js';
@@ -12,7 +13,8 @@ const host = process.env.HOST || 'localhost';
 const port = parseInt(process.env.PORT || '1234', 10);
 const dataDir = process.env.DATA_DIR;
 
-const distDir = path.resolve(process.cwd(), '..', 'dist');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const distDir = path.resolve(__dirname, '..', '..', 'dist');
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
