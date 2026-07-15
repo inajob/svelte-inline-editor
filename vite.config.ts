@@ -3,6 +3,11 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/svelte-inline-editor/',
+  base: '/',
   plugins: [svelte()],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:1234',
+    },
+  },
 })

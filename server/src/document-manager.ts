@@ -2,8 +2,9 @@ import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
+import type WebSocket from 'ws';
 import * as db from './database.js';
-import type { WSSharedDoc } from '../types.js';
+import type { WSSharedDoc } from './types.js';
 
 const docs = new Map<string, WSSharedDoc>();
 
@@ -116,7 +117,7 @@ function broadcastUpdate(doc: WSSharedDoc, update: Uint8Array, excludeClientId?:
   encoding.writeVarUint8Array(encoder, update);
   const message = encoding.toUint8Array(encoder);
 
-  doc.conns.forEach((conn) => {
+  doc.conns.forEach((conn: WebSocket) => {
     if (excludeClientId !== undefined && doc.connToClientId.get(conn) === excludeClientId) {
       return;
     }

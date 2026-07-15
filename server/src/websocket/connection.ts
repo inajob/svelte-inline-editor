@@ -124,7 +124,7 @@ export function handleConnection(
         awarenessProtocol.encodeAwarenessUpdate(doc.awareness, changedClients)
       );
       const awarenessMsg = encoding.toUint8Array(awarenessEncoder);
-      doc.conns.forEach((otherConn) => {
+      doc.conns.forEach((otherConn: WebSocket) => {
         if (otherConn !== conn) {
           try { otherConn.send(awarenessMsg); } catch (_e) {}
         }
@@ -139,7 +139,7 @@ export function handleConnection(
     doc.connToClientId.delete(conn);
 
     if (doc.awareness) {
-      const clientIds = Array.from(doc.awareness.getStates().keys());
+    const clientIds = Array.from(doc.awareness.getStates().keys()) as number[];
       for (const clientId of clientIds) {
         if (clientId !== doc.awareness.clientID) {
           awarenessProtocol.removeAwarenessStates(doc.awareness, [clientId], null);

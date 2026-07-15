@@ -11,6 +11,9 @@ export interface YjsLine {
 }
 
 function getDefaultWsUrl(): string {
+  if (import.meta.env.DEV) {
+    return 'ws://localhost:1234';
+  }
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${proto}//${window.location.host}`;
 }
