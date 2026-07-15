@@ -60,7 +60,6 @@ export function parseIndentation(text: string): { indent: number; content: strin
 }
 
 export function renderMarkdown(text: string): string {
-  console.log('renderMarkdown received text:', text); // DEBUG LOG
   // For empty or whitespace-only lines, render a non-breaking space
   // to ensure the div has a stable, measurable height.
   if (text.trim() === '') {

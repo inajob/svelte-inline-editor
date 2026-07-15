@@ -21,6 +21,11 @@
   },
   "dependencies": {
     "highlight.js": "^11.11.1",
-    "mermaid": "^11.12.2"
+    "mermaid": "^11.12.2",
+    "yjs": "^13.6.31",
+    "y-websocket": "^3.0.0",
+    "y-indexeddb": "^9.0.12",
+    "y-protocols": "^1.0.7",
+    "uuid": "^11.1.0"
   }
 }

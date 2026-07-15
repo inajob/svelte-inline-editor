@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { afterUpdate } from 'svelte';
+  import { afterUpdate, beforeUpdate } from 'svelte';
   import hljs from 'highlight.js'; // Import highlight.js
   // Import a more distinct theme
   import 'highlight.js/styles/github.css'; 
@@ -41,18 +41,19 @@
     theme: 'default'
   });
 
-  export let initialLines: Omit<Line, 'renderedHtml'>[] = [
-    { id: 1, text: "# Large Heading" },
-    { id: 2, text: "This is a normal paragraph." },
-    { id: 3, text: "" }, 
-    { id: 4, text: "Another paragraph." },
-    { id: 5, text: "" }, 
-    { id: 6, text: "" }, 
-    { id: 7, text: "" }, 
-    { id: 8, text: "## Smaller Heading" },
-    { id: 9, text: "A very long line of text that will definitely wrap to the next line, which should give it a significant height. Let's see how the editor handles the measurement of a line like this when we navigate to or from it. This is a crucial test case." },
-    { id: 10, text: "" }, 
-    { id: 11, text: 
+  export let key: number = 0;
+  export let initialLines: { id: string | number; text: string }[] = [
+    { id: '1', text: "# Large Heading" },
+    { id: '2', text: "This is a normal paragraph." },
+    { id: '3', text: "" }, 
+    { id: '4', text: "Another paragraph." },
+    { id: '5', text: "" }, 
+    { id: '6', text: "" }, 
+    { id: '7', text: "" }, 
+    { id: '8', text: "## Smaller Heading" },
+    { id: '9', text: "A very long line of text that will definitely wrap to the next line, which should give it a significant height. Let's see how the editor handles the measurement of a line like this when we navigate to or from it. This is a crucial test case." },
+    { id: '10', text: "" }, 
+    { id: '11', text: 
 "```javascript" + "\n" +
 "function greet(name) {" + "\n" +
 "  console.log('Hello, ' + name);" + "\n" +
@@ -60,31 +61,53 @@
 "greet('World');" + "\n" +
 "```"
 },
-    { id: 12, text: "" },
-    { id: 13, text: "Final line." },
+    { id: '12', text: "" },
+    { id: '13', text: "Final line." },
   ];
 
-  let lines: Line[];
+  let nextId = 1;
+  let lines: Line[] = [];
+  let previousKey = key;
 
-  // Initialize lines from initialLines prop
-  
-  lines = initialLines.map(line => {
+  beforeUpdate(() => {
+    if (key !== previousKey) {
+      previousKey = key;
+      initializeLines();
+    }
+  });
+
+  function initializeLines() {
+    lines = initialLines.map(line => {
+      const id = typeof line.id === 'string' ? parseInt(line.id, 10) || hashCode(line.id) : line.id;
       const renderedHtml = renderMarkdown(line.text);
       return {
-          ...line,
-          renderedHtml: renderedHtml,
-          computedStyles: getComputedStylesFromHtml(renderedHtml)
+        id,
+        text: line.text,
+        renderedHtml,
+        computedStyles: getComputedStylesFromHtml(renderedHtml)
       };
-  });
-  
+    });
+    nextId = lines.length > 0 ? Math.max(...lines.map(l => l.id)) + 1 : 1;
+  }
 
-  let nextId = lines.length > 0 ? Math.max(...lines.map(l => l.id)) + 1 : 1;
+  function hashCode(str: string): number {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return Math.abs(hash);
+  }
+
+  initializeLines();
 
   export let debugMode: boolean = false;
 
   let pendingFocusIndex: number | null = null;
   let pendingFocusPos: number | null = null;
   let editingLineIndex: number | null = null;
+  let isTransferringFocus = false;
 
   function updateLineText(index: number, newText: string) {
     const line = lines[index];
@@ -105,7 +128,7 @@
   }
 
   function handleLineBlur() {
-    if (!debugMode) {
+    if (!debugMode && !isTransferringFocus) {
       editingLineIndex = null;
     }
   }
@@ -368,6 +391,7 @@
       computedStyles: getComputedStylesFromHtml(renderMarkdown(newLineText))
     };
 
+    isTransferringFocus = true;
     lines = [...lines.slice(0, index + 1), newLine, ...lines.slice(index + 1)];
 
     // Activate the new line, placing cursor at the start of its editable content
@@ -400,6 +424,7 @@
       const combinedText = previousLine.text + lines[index].text; // Use lines[index].text instead of value
       previousLine.text = combinedText;
       previousLine.renderedHtml = renderMarkdown(combinedText);
+      isTransferringFocus = true;
       lines = lines.filter((_, i) => i !== index);
       activateLineForEditing(index - 1, previousLine.text.length - lines[index].text.length);
     }
@@ -417,12 +442,14 @@
 
         if (shouldMoveUp && index > 0) {
           event.preventDefault();
+          isTransferringFocus = true;
           activateLineForEditing(index - 1, 0);
         }
     } else {
         // For regular lines: always move up if not the first line
         if (index > 0) {
           event.preventDefault();
+          isTransferringFocus = true;
           activateLineForEditing(index - 1, 0);
         }
     }
@@ -440,27 +467,27 @@
 
       if (shouldMoveDown && index < lines.length - 1) { 
         event.preventDefault(); 
+        isTransferringFocus = true;
         activateLineForEditing(index + 1, 0);
       }
     } else {
       // For regular lines: always move down if not the last line
       if (index < lines.length - 1) { 
         event.preventDefault(); 
+        isTransferringFocus = true;
         activateLineForEditing(index + 1, 0);
       }
     }
   }
 
   afterUpdate(() => {
-    // Focus management logic has been moved to the Line.svelte component.
-    // This parent component now only needs to ensure Mermaid diagrams are rendered
-    // and to reset the pending focus state after an update cycle.
     mermaid.run(); 
 
     if (pendingFocusIndex !== null) {
       pendingFocusIndex = null;
       pendingFocusPos = null;
     }
+    isTransferringFocus = false;
   });
 </script>
 
